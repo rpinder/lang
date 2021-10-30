@@ -47,15 +47,12 @@ eval (ESymbol str) = do
   case M.lookup str env of
     Just x -> return x
     Nothing -> throwError $ "Symbol not found: " ++ str
-eval (EPair e1 e2) = do
-  first <- eval e1
-  second <- eval e2
-  return $ EPair first second
+eval (EPair e1 e2) = liftM2 EPair (eval e1) (eval e2)
 eval (EFn f) = return $ EFn f
 eval (ESpecialFn f) = return $ ESpecialFn f
 eval (EApp s@(ESymbol _) e) = do
-  res <- eval s
-  eval (EApp res e)
+  sym <- eval s
+  eval $ EApp sym e
 eval (EApp (EFn f) e) = eval e >>= f
 eval (EApp (ESpecialFn f) e) = f e
 eval (EThen e1 e2) = do
@@ -65,17 +62,18 @@ eval (EThen e1 e2) = do
   eval e2
 eval e = throwError $ "Unknown: " ++ show e
 
+pairIntMap :: String -> (Integer -> Integer -> Integer) -> Expr -> EResult
+pairIntMap _ f (EPair (EInt x1) (EInt x2)) = return . EInt $ f x1 x2
+pairIntMap str _ _ = throwError $ str ++ " requires two integers"
+
 eAdd :: Expr -> EResult
-eAdd (EPair (EInt x1) (EInt x2)) = return $ EInt (x1 + x2)
-eAdd _ = throwError "Add requires two integers"
+eAdd = pairIntMap "Add" (+)
 
 eMultiply :: Expr -> EResult
-eMultiply (EPair (EInt x1) (EInt x2)) = return $ EInt (x1 * x2)
-eMultiply _ = throwError "Add requires two integers"
+eMultiply = pairIntMap "Multiply" (*)
 
 eSubtract :: Expr -> EResult
-eSubtract (EPair (EInt x1) (EInt x2)) = return $ EInt (x1 - x2)
-eSubtract _ = throwError "Add requires two integers"
+eSubtract = pairIntMap "Subtract" (-)
 
 eDefine :: Expr -> EResult
 eDefine (EPair (ESymbol s) e) = do
