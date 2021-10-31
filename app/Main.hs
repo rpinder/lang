@@ -17,7 +17,6 @@ type Context = M.Map String Expr
 type EResult = ExceptT String (StateT Context IO) Expr
 
 data Expr = EInt Integer
-          | EBool Bool
           | ESymbol String
           | EPair Expr Expr
           | EFn (Expr -> EResult)
@@ -29,7 +28,6 @@ data Expr = EInt Integer
 
 instance Show Expr where
   show (EInt x) = show x
-  show (EBool x) = show x
   show (ESymbol x) = x
   show (EPair x1 x2) = "(" ++ show x1 ++ "," ++ show x2 ++ ")"
   show (EFn _) = "<Fn>"
@@ -39,16 +37,23 @@ instance Show Expr where
   show (EThen e1 e2) = show e1 ++ "\n" ++ show e2
   show ENil = "nil"
 
+instance Eq Expr where
+  (EInt x) == (EInt y) = x == y
+  (ESymbol x) == (ESymbol y) = x == y
+  (EPair x1 x2) == (EPair y1 y2) = x1 == y1 && x2 == y2 
+  ENil == ENil = True
+  _ == _ = False
+
 builtIns :: Context
 builtIns = M.fromList [
   ("+", EFn eAdd),
   ("*", EFn eMultiply),
   ("-", EFn eSubtract),
+  ("if", ESpecialFn eIf),
   ("define", ESpecialFn eDefine)]
 
 eval :: Expr -> EResult
 eval (EInt x) = return $ EInt x
-eval (EBool x) = return $ EBool x
 eval ENil = return $ ENil
 eval (ESymbol str) = do 
   env <- lift $ get
@@ -96,6 +101,12 @@ eDefine (EPair (ESymbol s) e) = do
   lift $ modify $ M.insert s e'
   return e'
 eDefine _ = throwError "Define requires (Symbol Expr)"
+
+eIf :: Expr -> EResult
+eIf (EPair cond (EPair e1 e2)) = do
+  cond' <- eval cond
+  if cond' /= (EInt 0) then eval e1 else eval e2
+eIf _ = throwError "If requires (Cond, (e1, e2))"
 
 type Parser = Parsec Void Text
 
