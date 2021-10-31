@@ -137,6 +137,11 @@ parsePair = do
   void (char ')')
   return $ EPair first second
 
+parsePairSimple :: Parser Expr
+parsePairSimple = do
+  es <- some parseExpr
+  return $ listToPairs es
+
 parseApp :: Parser Expr
 parseApp = parseAppSymbol
 
@@ -144,7 +149,7 @@ parseAppSymbol :: Parser Expr
 parseAppSymbol = do
   void (lexeme . char $ '(')
   name <- lexeme $ some (alphaNumChar <|> oneOf "+-*=")
-  argument <- parseExpr
+  argument <- try parsePairSimple <|> parseExpr
   void (lexeme . char $ ')')
   return $ EApp (ESymbol name) argument
 
@@ -168,7 +173,7 @@ parseLambda = do
   return $ ELambda param body
 
 parseExpr :: Parser Expr
-parseExpr = try parsePair <|> try parseApp <|> try parseInteger <|> try parseSymbol <|> try parseLambda
+parseExpr = try parsePair <|> try parseApp <|> try parseInteger <|> try parseSymbol <|> try parseLambda -- <|> try parsePairSimple
 
 combineExprs :: [Expr] -> Either String Expr
 combineExprs [] = Left "No Exprs"
@@ -176,7 +181,7 @@ combineExprs [x] = Right x
 combineExprs (x:xs) = combineExprs xs >>= Right . EThen x
 
 listToPairs :: [Expr] -> Expr
-listToPairs [] = ENil
+listToPairs [x] = x
 listToPairs (x:xs) = EPair x $ listToPairs xs
 
 pairsToList :: Expr -> [Expr]
