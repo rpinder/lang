@@ -49,7 +49,9 @@ builtIns = M.fromList [
   ("+", EFn eAdd),
   ("*", EFn eMultiply),
   ("-", EFn eSubtract),
+  ("nil", ENil),
   ("if", ESpecialFn eIf),
+  ("=", EFn eEq),
   ("define", ESpecialFn eDefine)]
 
 eval :: Expr -> EResult
@@ -105,8 +107,12 @@ eDefine _ = throwError "Define requires (Symbol Expr)"
 eIf :: Expr -> EResult
 eIf (EPair cond (EPair e1 e2)) = do
   cond' <- eval cond
-  if cond' /= (EInt 0) then eval e1 else eval e2
+  if cond' /= ENil then eval e1 else eval e2
 eIf _ = throwError "If requires (Cond, (e1, e2))"
+
+eEq :: Expr -> EResult
+eEq (EPair e1 e2) = return $ if e1 == e2 then (EInt 1) else ENil
+eEq _ = throwError "Eq requires Pair of two values"
 
 type Parser = Parsec Void Text
 
@@ -137,7 +143,7 @@ parseApp = parseAppSymbol
 parseAppSymbol :: Parser Expr
 parseAppSymbol = do
   void (lexeme . char $ '(')
-  name <- lexeme $ some (alphaNumChar <|> oneOf "+-*/")
+  name <- lexeme $ some (alphaNumChar <|> oneOf "+-*=")
   argument <- parseExpr
   void (lexeme . char $ ')')
   return $ EApp (ESymbol name) argument
