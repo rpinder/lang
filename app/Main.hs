@@ -17,21 +17,27 @@ type Context = M.Map String Expr
 type EResult = ExceptT String (StateT Context IO) Expr
 
 data Expr = EInt Integer
+          | EBool Bool
           | ESymbol String
           | EPair Expr Expr
           | EFn (Expr -> EResult)
+          | ELambda String Expr
           | ESpecialFn (Expr -> EResult)
           | EApp Expr Expr
           | EThen Expr Expr
+          | ENil
 
 instance Show Expr where
   show (EInt x) = show x
+  show (EBool x) = show x
   show (ESymbol x) = x
   show (EPair x1 x2) = "(" ++ show x1 ++ "," ++ show x2 ++ ")"
   show (EFn _) = "<Fn>"
+  show (ELambda _ _) = "<Lambda>"
   show (ESpecialFn _) = "<SpecialFn>"
   show (EApp e1 e2) = "(" ++ show e1 ++ " " ++ show e2 ++ ")"
   show (EThen e1 e2) = show e1 ++ "\n" ++ show e2
+  show ENil = "nil"
 
 builtIns :: Context
 builtIns = M.fromList [
@@ -42,6 +48,8 @@ builtIns = M.fromList [
 
 eval :: Expr -> EResult
 eval (EInt x) = return $ EInt x
+eval (EBool x) = return $ EBool x
+eval ENil = return $ ENil
 eval (ESymbol str) = do 
   env <- lift $ get
   case M.lookup str env of
@@ -50,11 +58,18 @@ eval (ESymbol str) = do
 eval (EPair e1 e2) = liftM2 EPair (eval e1) (eval e2)
 eval (EFn f) = return $ EFn f
 eval (ESpecialFn f) = return $ ESpecialFn f
+eval e@(ELambda _ _) = return e
 eval (EApp s@(ESymbol _) e) = do
   sym <- eval s
   eval $ EApp sym e
 eval (EApp (EFn f) e) = eval e >>= f
 eval (EApp (ESpecialFn f) e) = f e
+eval (EApp (ELambda param body) e) = do
+  current <- lift get
+  lift $ modify $ M.insert param e
+  e' <- eval body
+  lift $ put current
+  return e'
 eval (EThen e1 e2) = do
   current <- lift $ get
   state' <- lift . lift $ execStateT (runExceptT $ eval e1) current
@@ -126,13 +141,30 @@ parseInteger = do
   int <- toInteger <$> integer
   return $ EInt int
 
+parseLambda :: Parser Expr
+parseLambda = do
+  void (lexeme . char $ '(')
+  void . lexeme . string $ T.pack "lambda"
+  param <- lexeme $ some alphaNumChar
+  body <- parseExpr
+  void (lexeme . char $ ')')
+  return $ ELambda param body
+
 parseExpr :: Parser Expr
-parseExpr = try parsePair <|> try parseApp <|> try parseInteger <|> try parseSymbol
+parseExpr = try parsePair <|> try parseApp <|> try parseInteger <|> try parseSymbol <|> try parseLambda
 
 combineExprs :: [Expr] -> Either String Expr
 combineExprs [] = Left "No Exprs"
 combineExprs [x] = Right x
 combineExprs (x:xs) = combineExprs xs >>= Right . EThen x
+
+listToPairs :: [Expr] -> Expr
+listToPairs [] = ENil
+listToPairs (x:xs) = EPair x $ listToPairs xs
+
+pairsToList :: Expr -> [Expr]
+pairsToList (EPair x y) = x : pairsToList y
+pairsToList ex = [ex]
 
 parseAll :: String -> Either String Expr
 parseAll str = do
