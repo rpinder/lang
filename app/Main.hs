@@ -12,6 +12,8 @@ import Data.Void
 import Control.Monad.State
 import Control.Monad.Except
 
+import System.IO
+
 type Context = M.Map String Expr
 type EResult = ExceptT String (StateT Context IO) Expr
 
@@ -221,5 +223,30 @@ compute str = do
       res <- evalStateT (runExceptT $ eval x) builtIns
       print res
 
+readInput :: IO String
+readInput = do
+  putStr "REPL> "
+  hFlush stdout
+  getLine
+
+output :: String -> IO ()
+output str = do
+  case parseAll str of
+    Left err -> putStr err
+    Right x -> do
+      res <- evalStateT (runExceptT $ eval x) builtIns
+      case res of
+        Left err -> putStr err
+        Right x' -> print x'
+
+repl :: IO ()
+repl = do
+  input <- readInput
+  case input of
+    ":q" -> return ()
+    ':':'r':'e':'a':'d':' ':file -> readFile file >>= output >> repl
+    str -> output str >> repl
+    
+
 main :: IO ()
-main = print ""
+main = repl
