@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Main where
 
 import Control.Monad
@@ -11,6 +12,7 @@ import qualified Data.Text as T
 import Data.Void
 import Control.Monad.State
 import Control.Monad.Except
+import qualified Control.Exception as E
 
 import System.IO
 
@@ -239,14 +241,28 @@ output str = do
         Left err -> putStr err
         Right x' -> print x'
 
+safeRead :: String -> IO (Either String String)
+safeRead str = do
+  res <- E.try $ readFile str
+  case res of
+    Left (ex::E.SomeException) -> return $ Left $ "Exception : " ++ show ex
+    Right val -> return $ Right val
+
 repl :: IO ()
 repl = do
   input <- readInput
   case input of
     ":q" -> return ()
-    ':':'r':'e':'a':'d':' ':file -> readFile file >>= output >> repl
+    ":?" -> putStrLn ":? -> help\n:q -> quit\n:read <FILE> -> read from file" >> repl
+    ':':'r':'e':'a':'d':' ':file -> do
+      res <- safeRead file
+      case res of
+        Left e -> putStrLn e >> repl
+        Right val -> output val >> repl
     str -> output str >> repl
     
 
 main :: IO ()
-main = repl
+main = do
+  putStrLn "Lang REPL, :? for help"
+  repl
