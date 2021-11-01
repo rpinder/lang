@@ -51,6 +51,7 @@ builtIns = M.fromList [
   ("nil", ENil),
   ("if", ESpecialFn eIf),
   ("=", EFn eEq),
+  ("display", EFn eDisplay),
   ("def", ESpecialFn eDefine)]
 
 eval :: Expr -> EResult
@@ -116,6 +117,11 @@ eIf _ = throwError "If requires (Cond, (e1, e2))"
 eEq :: Expr -> EResult
 eEq (EPair e1 e2) = return $ if e1 == e2 then (EInt 1) else ENil
 eEq _ = throwError "Eq requires Pair of two values"
+
+eDisplay :: Expr -> EResult
+eDisplay e = do
+  lift . lift . putStrLn . show $ e
+  return e
 
 type Parser = Parsec Void Text
 
