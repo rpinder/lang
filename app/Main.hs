@@ -55,7 +55,9 @@ builtIns = M.fromList [
   ("nil", ENil),
   ("if", ESpecialFn eIf),
   ("=", EFn eEq),
-  ("display", EFn eDisplay),
+  ("fst", EFn eFst),
+  ("snd", EFn eSnd),
+  ("print", EFn ePrint),
   ("def", ESpecialFn eDefine)]
 
 eval :: Expr -> EResult
@@ -94,7 +96,7 @@ eval e = throwError $ "Unknown: " ++ show e
 
 pairIntMap :: String -> (Integer -> Integer -> Integer) -> Expr -> EResult
 pairIntMap _ f (EPair (EInt x1) (EInt x2)) = return . EInt $ f x1 x2
-pairIntMap str _ _ = throwError $ str ++ " requires two integers"
+pairIntMap str _ e = throwError $ str ++ " requires two integers - " ++ show e
 
 eAdd :: Expr -> EResult
 eAdd = pairIntMap "Add" (+)
@@ -122,11 +124,19 @@ eEq :: Expr -> EResult
 eEq (EPair e1 e2) = return $ if e1 == e2 then (EInt 1) else ENil
 eEq _ = throwError "Eq requires Pair of two values"
 
-eDisplay :: Expr -> EResult
-eDisplay e = do
+ePrint :: Expr -> EResult
+ePrint e = do
   lift . lift . putStrLn . show $ e
   return e
 
+eFst :: Expr -> EResult
+eFst (EPair e _) = return e
+eFst _ = throwError "fst requires a Pair"
+
+eSnd :: Expr -> EResult
+eSnd (EPair _ e) = return e
+eSnd _ = throwError "snd requires a Pair"
+  
 type Parser = Parsec Void Text
 
 sc :: Parser ()
@@ -238,7 +248,7 @@ output str = do
     Right x -> do
       res <- evalStateT (runExceptT $ eval x) builtIns
       case res of
-        Left err -> putStr err
+        Left err -> putStrLn err
         Right x' -> print x'
 
 safeRead :: String -> IO (Either String String)
