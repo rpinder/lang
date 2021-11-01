@@ -1,6 +1,5 @@
-module Main where
-
 {-# LANGUAGE OverloadedStrings #-}
+module Main where
 
 import Control.Monad
 import qualified Data.Map as M
@@ -15,6 +14,7 @@ import Control.Monad.Except
 
 type Context = M.Map String Expr
 type EResult = ExceptT String (StateT Context IO) Expr
+type EResult' = StateT Context (ExceptT String IO) Expr
 
 data Expr = EInt Integer
           | ESymbol String
@@ -52,7 +52,7 @@ builtIns = M.fromList [
   ("nil", ENil),
   ("if", ESpecialFn eIf),
   ("=", EFn eEq),
-  ("define", ESpecialFn eDefine)]
+  ("def", ESpecialFn eDefine)]
 
 eval :: Expr -> EResult
 eval (EInt x) = return $ EInt x
@@ -76,7 +76,6 @@ eval (EApp l@(ELambda param body) e) = do
   current <- lift get
   lift $ modify $ M.insert param e'
   res <- eval body
-  current' <- lift get
   lift $ put current
   return res
 eval (EThen e1 e2) = do
@@ -119,7 +118,7 @@ eEq _ = throwError "Eq requires Pair of two values"
 type Parser = Parsec Void Text
 
 sc :: Parser ()
-sc = L.space space1 empty empty
+sc = L.space space1 (L.skipLineComment "#") empty
 
 lexeme :: Parser a -> Parser a
 lexeme = L.lexeme sc
@@ -133,33 +132,33 @@ integer = lexeme L.decimal
 parsePair :: Parser Expr
 parsePair = do
   void (lexeme . char $ '(')
-  first <- parseExpr
+  first <- lexeme $ parseExpr
   void (lexeme . char $ ',')
-  second <- parseExpr
-  void (char ')')
+  second <- lexeme $ parseExpr
+  void (lexeme . char $ ')')
   return $ EPair first second
 
 parsePairSimple :: Parser Expr
 parsePairSimple = do
-  es <- some parseExpr
+  es <- lexeme $ some parseExpr
   return $ listToPairs es
 
 parseApp :: Parser Expr
-parseApp = parseAppSymbol <|> parseAppLambda
+parseApp = lexeme $ parseAppSymbol <|> parseAppLambda
 
 parseAppLambda :: Parser Expr
 parseAppLambda = do
   void (lexeme . char $ '(')
-  lambda <- parseLambda
-  argument <- try parsePairSimple <|> parseExpr
+  lambda <- lexeme $ parseLambda
+  argument <- lexeme $ try parsePairSimple <|> parseExpr
   void (lexeme . char $ ')')
   return $ EApp lambda argument
 
 parseAppSymbol :: Parser Expr
 parseAppSymbol = do
   void (lexeme . char $ '(')
-  name <- lexeme $ some (letterChar <|> oneOf "+-*=")
-  argument <- try parsePairSimple <|> parseExpr
+  name <- lexeme $ some (letterChar <|> oneOf ("+-*=" :: String))
+  argument <- lexeme $ try parsePairSimple <|> parseExpr
   void (lexeme . char $ ')')
   return $ EApp (ESymbol name) argument
 
@@ -170,15 +169,15 @@ parseSymbol = do
 
 parseInteger :: Parser Expr
 parseInteger = do
-  int <- toInteger <$> integer
+  int <- lexeme $ toInteger <$> integer
   return $ EInt int
 
 parseLambda :: Parser Expr
 parseLambda = do
   void (lexeme . char $ '(')
-  void . lexeme . string $ T.pack "lambda"
+  void . lexeme . string $ "fn"
   param <- lexeme $ some letterChar
-  body <- parseExpr
+  body <- lexeme $ parseExpr
   void (lexeme . char $ ')')
   return $ ELambda param body
 
