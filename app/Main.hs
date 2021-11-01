@@ -14,7 +14,6 @@ import Control.Monad.Except
 
 type Context = M.Map String Expr
 type EResult = ExceptT String (StateT Context IO) Expr
-type EResult' = StateT Context (ExceptT String IO) Expr
 
 data Expr = EInt Integer
           | ESymbol String
@@ -80,9 +79,12 @@ eval (EApp l@(ELambda param body) e) = do
   return res
 eval (EThen e1 e2) = do
   current <- lift $ get
-  state' <- lift . lift $ execStateT (runExceptT $ eval e1) current
-  lift $ put state'
-  eval e2
+  (value, state') <- lift . lift $ runStateT (runExceptT $ eval e1) current
+  case value of
+    Left err -> throwError err
+    Right _ -> do
+      lift $ put state'
+      eval e2
 eval e = throwError $ "Unknown: " ++ show e
 
 pairIntMap :: String -> (Integer -> Integer -> Integer) -> Expr -> EResult
