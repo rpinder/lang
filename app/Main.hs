@@ -71,12 +71,14 @@ eval (EApp s@(ESymbol _) e) = do
   eval $ EApp sym e
 eval (EApp (EFn f) e) = eval e >>= f
 eval (EApp (ESpecialFn f) e) = f e
-eval (EApp (ELambda param body) e) = do
+eval (EApp l@(ELambda param body) e) = do
+  e' <- eval e
   current <- lift get
-  lift $ modify $ M.insert param e
-  e' <- eval body
+  lift $ modify $ M.insert param e'
+  res <- eval body
+  current' <- lift get
   lift $ put current
-  return e'
+  return res
 eval (EThen e1 e2) = do
   current <- lift $ get
   state' <- lift . lift $ execStateT (runExceptT $ eval e1) current
@@ -143,19 +145,27 @@ parsePairSimple = do
   return $ listToPairs es
 
 parseApp :: Parser Expr
-parseApp = parseAppSymbol
+parseApp = parseAppSymbol <|> parseAppLambda
+
+parseAppLambda :: Parser Expr
+parseAppLambda = do
+  void (lexeme . char $ '(')
+  lambda <- parseLambda
+  argument <- try parsePairSimple <|> parseExpr
+  void (lexeme . char $ ')')
+  return $ EApp lambda argument
 
 parseAppSymbol :: Parser Expr
 parseAppSymbol = do
   void (lexeme . char $ '(')
-  name <- lexeme $ some (alphaNumChar <|> oneOf "+-*=")
+  name <- lexeme $ some (letterChar <|> oneOf "+-*=")
   argument <- try parsePairSimple <|> parseExpr
   void (lexeme . char $ ')')
   return $ EApp (ESymbol name) argument
 
 parseSymbol :: Parser Expr
 parseSymbol = do
-  name <- lexeme $ some alphaNumChar
+  name <- lexeme $ some letterChar
   return $ ESymbol name
 
 parseInteger :: Parser Expr
@@ -167,13 +177,13 @@ parseLambda :: Parser Expr
 parseLambda = do
   void (lexeme . char $ '(')
   void . lexeme . string $ T.pack "lambda"
-  param <- lexeme $ some alphaNumChar
+  param <- lexeme $ some letterChar
   body <- parseExpr
   void (lexeme . char $ ')')
   return $ ELambda param body
 
 parseExpr :: Parser Expr
-parseExpr = try parsePair <|> try parseApp <|> try parseInteger <|> try parseSymbol <|> try parseLambda -- <|> try parsePairSimple
+parseExpr = try parsePair <|> try parseLambda <|> try parseApp <|> try parseInteger <|> try parseSymbol
 
 combineExprs :: [Expr] -> Either String Expr
 combineExprs [] = Left "No Exprs"
