@@ -58,6 +58,7 @@ builtIns = M.fromList [
   ("fst", EFn eFst),
   ("snd", EFn eSnd),
   ("print", EFn ePrint),
+  ("cons", EFn eCons),
   ("def", ESpecialFn eDefine)]
 
 eval :: Expr -> EResult
@@ -84,6 +85,13 @@ eval (EApp l@(ELambda param body) e) = do
   res <- eval body
   lift $ put current
   return res
+eval ex@(EApp f e) = do
+  f' <- eval f
+  case f' of
+    fn@(EFn _) -> eval $ EApp fn e
+    fn@(ESpecialFn _) -> eval $ EApp fn e
+    fn@(ELambda _ _) -> eval $ EApp fn e
+    _ -> throwError $ "Unknown: " ++ show ex ++ " " ++ show f'
 eval (EThen e1 e2) = do
   current <- lift $ get
   (value, state') <- lift . lift $ runStateT (runExceptT $ eval e1) current
@@ -92,7 +100,6 @@ eval (EThen e1 e2) = do
     Right _ -> do
       lift $ put state'
       eval e2
-eval e = throwError $ "Unknown: " ++ show e
 
 pairIntMap :: String -> (Integer -> Integer -> Integer) -> Expr -> EResult
 pairIntMap _ f (EPair (EInt x1) (EInt x2)) = return . EInt $ f x1 x2
@@ -121,21 +128,29 @@ eIf (EPair cond (EPair e1 e2)) = do
 eIf _ = throwError "If requires (Cond, (e1, e2))"
 
 eEq :: Expr -> EResult
-eEq (EPair e1 e2) = return $ if e1 == e2 then (EInt 1) else ENil
+eEq (EPair e1 e2) = do
+  e1' <- eval e1
+  e2' <- eval e2
+  return $ if e1' == e2' then (EInt 1) else ENil
 eEq _ = throwError "Eq requires Pair of two values"
 
 ePrint :: Expr -> EResult
 ePrint e = do
-  lift . lift . putStrLn . show $ e
+  e' <- eval e
+  lift . lift . putStrLn . show $ e'
   return e
 
 eFst :: Expr -> EResult
 eFst (EPair e _) = return e
-eFst _ = throwError "fst requires a Pair"
+eFst ex = throwError $ "fst requires a Pair: " ++ show ex
 
 eSnd :: Expr -> EResult
 eSnd (EPair _ e) = return e
-eSnd _ = throwError "snd requires a Pair"
+eSnd ex = throwError $ "snd requires a Pair: " ++ show ex
+
+eCons :: Expr -> EResult
+eCons e@(EPair _ _) = return e
+eCons _ = throwError "Cons requires a Pair"
   
 type Parser = Parsec Void Text
 
@@ -151,60 +166,79 @@ symbol = L.symbol sc
 integer :: Parser Int
 integer = lexeme L.decimal
 
-parsePair :: Parser Expr
-parsePair = do
-  void (lexeme . char $ '(')
-  first <- lexeme $ parseExpr
-  void (lexeme . char $ ',')
-  second <- lexeme $ parseExpr
-  void (lexeme . char $ ')')
-  return $ EPair first second
+-- parsePair :: Parser Expr
+-- parsePair = do
+--   void (lexeme . char $ '(')
+--   first <- lexeme $ parseExpr
+--   void (lexeme . char $ ',')
+--   second <- lexeme $ parseExpr
+--   void (lexeme . char $ ')')
+--   return $ EPair first second
 
-parsePairSimple :: Parser Expr
-parsePairSimple = do
-  es <- lexeme $ some parseExpr
-  return $ listToPairs es
+-- parsePairSimple :: Parser Expr
+-- parsePairSimple = do
+--   es <- lexeme $ some parseExpr
+--   return $ listToPairs es
 
-parseApp :: Parser Expr
-parseApp = lexeme $ parseAppSymbol <|> parseAppLambda
+-- parseApp :: Parser Expr
+-- parseApp = lexeme $ parseAppSymbol <|> parseAppLambda
 
-parseAppLambda :: Parser Expr
-parseAppLambda = do
-  void (lexeme . char $ '(')
-  lambda <- lexeme $ parseLambda
-  argument <- lexeme $ try parsePairSimple <|> parseExpr
-  void (lexeme . char $ ')')
-  return $ EApp lambda argument
+-- parseAppLambda :: Parser Expr
+-- parseAppLambda = do
+--   void (lexeme . char $ '(')
+--   lambda <- lexeme $ parseLambda
+--   argument <- lexeme $ try parsePairSimple <|> parseExpr
+--   void (lexeme . char $ ')')
+--   return $ EApp lambda argument
 
-parseAppSymbol :: Parser Expr
-parseAppSymbol = do
-  void (lexeme . char $ '(')
-  name <- lexeme $ some (letterChar <|> oneOf ("+-*=" :: String))
-  argument <- lexeme $ try parsePairSimple <|> parseExpr
-  void (lexeme . char $ ')')
-  return $ EApp (ESymbol name) argument
+-- parseAppSymbol :: Parser Expr
+-- parseAppSymbol = do
+--   void (lexeme . char $ '(')
+--   name <- lexeme $ some (letterChar <|> oneOf ("+-*=" :: String))
+--   argument <- lexeme $ try parsePairSimple <|> parseExpr
+--   void (lexeme . char $ ')')
+--   return $ EApp (ESymbol name) argument
 
 parseSymbol :: Parser Expr
 parseSymbol = do
-  name <- lexeme $ some letterChar
+  name <- lexeme . some $ letterChar <|> oneOf ("+-*=" :: String)
   return $ ESymbol name
 
 parseInteger :: Parser Expr
 parseInteger = do
-  int <- lexeme $ toInteger <$> integer
+  int <- toInteger <$> integer
   return $ EInt int
 
-parseLambda :: Parser Expr
-parseLambda = do
+-- parseLambda :: Parser Expr
+-- parseLambda = do
+--   void (lexeme . char $ '(')
+--   void . lexeme . string $ "fn"
+--   param <- lexeme $ some letterChar
+--   body <- lexeme $ parseExpr
+--   void (lexeme . char $ ')')
+--   return $ ELambda param body
+
+-- parseExpr :: Parser Expr
+-- parseExpr = try parsePair <|> try parseLambda <|> try parseApp <|> try parseInteger <|> try parseSymbol
+
+parseBracketsHelper :: Parser Expr
+parseBracketsHelper = do
   void (lexeme . char $ '(')
-  void . lexeme . string $ "fn"
-  param <- lexeme $ some letterChar
-  body <- lexeme $ parseExpr
+  es <- lexeme $ some parseExpr
+  let pairs = listToPairs es
   void (lexeme . char $ ')')
-  return $ ELambda param body
+  return pairs
+
+parseBrackets :: Parser Expr
+parseBrackets = do
+  expr <- parseBracketsHelper
+  case expr of
+    (EPair (ESymbol "fn") (EPair (ESymbol param) body)) -> return $ ELambda param body
+    (EPair f arguments) -> return $ EApp f arguments
+    ex -> fail $ show ex
 
 parseExpr :: Parser Expr
-parseExpr = try parsePair <|> try parseLambda <|> try parseApp <|> try parseInteger <|> try parseSymbol
+parseExpr = try parseSymbol <|> try parseInteger <|> try parseBrackets
 
 combineExprs :: [Expr] -> Either String Expr
 combineExprs [] = Left "No Exprs"
@@ -221,7 +255,7 @@ pairsToList ex = [ex]
 
 parseAll :: String -> Either String Expr
 parseAll str = do
-  parsed <- case runParser (some parseExpr) "" (T.pack str) of
+  parsed <- case runParser (someTill parseExpr eof) "" (T.pack str) of
     Left err -> Left $ errorBundlePretty err
     Right x -> Right x
   res <- combineExprs parsed
