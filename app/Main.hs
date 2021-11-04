@@ -34,7 +34,7 @@ instance Show Expr where
   show (ESymbol x) = x
   show (EPair x1 x2) = "(" ++ show x1 ++ "," ++ show x2 ++ ")"
   show (EFn _) = "<Fn>"
-  show (ELambda _ _) = "<Lambda>"
+  show (ELambda s e) = "<" ++ show s ++ " : " ++ show e ++ ">"
   show (ESpecialFn _) = "<SpecialFn>"
   show (EApp e1 e2) = "(" ++ show e1 ++ " " ++ show e2 ++ ")"
   show (EThen e1 e2) = show e1 ++ "\n" ++ show e2
@@ -59,26 +59,27 @@ builtIns = M.fromList [
   ("snd", EFn eSnd),
   ("print", EFn ePrint),
   ("cons", EFn eCons),
-  ("def", ESpecialFn eDefine)]
+  ("def", ESpecialFn eDefine),
+  ("let", ESpecialFn eLet)]
 
 eval :: Expr -> EResult
-eval (EInt x) = return $ EInt x
-eval ENil = return $ ENil
+eval e@(EInt _) = return e
+eval ENil = return ENil
 eval (ESymbol str) = do 
   env <- lift $ get
   case M.lookup str env of
     Just x -> return x
     Nothing -> throwError $ "Symbol not found: " ++ str
 eval (EPair e1 e2) = liftM2 EPair (eval e1) (eval e2)
-eval (EFn f) = return $ EFn f
-eval (ESpecialFn f) = return $ ESpecialFn f
+eval e@(EFn _) = return e
+eval e@(ESpecialFn _) = return e
 eval e@(ELambda _ _) = return e
 eval (EApp s@(ESymbol _) e) = do
   sym <- eval s
   eval $ EApp sym e
 eval (EApp (EFn f) e) = eval e >>= f
 eval (EApp (ESpecialFn f) e) = f e
-eval (EApp l@(ELambda param body) e) = do
+eval (EApp (ELambda param body) e) = do
   e' <- eval e
   current <- lift get
   lift $ modify $ M.insert param e'
@@ -86,11 +87,12 @@ eval (EApp l@(ELambda param body) e) = do
   lift $ put current
   return res
 eval ex@(EApp f e) = do
+  e' <- eval e
   f' <- eval f
   case f' of
-    fn@(EFn _) -> eval $ EApp fn e
-    fn@(ESpecialFn _) -> eval $ EApp fn e
-    fn@(ELambda _ _) -> eval $ EApp fn e
+    fn@(EFn _) -> eval $ EApp fn e'
+    fn@(ESpecialFn _) -> eval $ EApp fn e'
+    fn@(ELambda _ _) -> eval $ EApp fn e'
     _ -> throwError $ "Unknown: " ++ show ex ++ " " ++ show f'
 eval (EThen e1 e2) = do
   current <- lift $ get
@@ -151,6 +153,16 @@ eSnd ex = throwError $ "snd requires a Pair: " ++ show ex
 eCons :: Expr -> EResult
 eCons e@(EPair _ _) = return e
 eCons _ = throwError "Cons requires a Pair"
+
+eLet :: Expr -> EResult
+eLet (EPair (ESymbol sym) (EPair argument rest)) = do
+  current <- lift get
+  argument' <- eval argument
+  lift $ modify $ M.insert sym argument'
+  rest' <- eval rest
+  lift $ put current
+  return rest'
+eLet ex = throwError $ "Let requires symbol and then expr: " ++ show ex
   
 type Parser = Parsec Void Text
 
