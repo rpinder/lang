@@ -249,8 +249,16 @@ parseBrackets = do
     (EPair f arguments) -> return $ EApp f arguments
     ex -> fail $ show ex
 
+parseList :: Parser Expr
+parseList = do
+  void (lexeme . char $ '[')
+  es <- lexeme $ some parseExpr
+  let pairs = listToConsList es
+  void (lexeme . char $ ']')
+  return pairs
+
 parseExpr :: Parser Expr
-parseExpr = try parseSymbol <|> try parseInteger <|> try parseBrackets
+parseExpr = try parseSymbol <|> try parseInteger <|> try parseBrackets <|> parseList
 
 combineExprs :: [Expr] -> Either String Expr
 combineExprs [] = Left "No Exprs"
@@ -260,6 +268,10 @@ combineExprs (x:xs) = combineExprs xs >>= Right . EThen x
 listToPairs :: [Expr] -> Expr
 listToPairs [x] = x
 listToPairs (x:xs) = EPair x $ listToPairs xs
+
+listToConsList :: [Expr] -> Expr
+listToConsList [] = ENil
+listToConsList (x:xs) = EPair x $ listToConsList xs
 
 pairsToList :: Expr -> [Expr]
 pairsToList (EPair x y) = x : pairsToList y
