@@ -22,35 +22,35 @@
 (print (ackermann 3 3)) # 61
 
 (def map (fn n
-  (if (= (snd n) nil)
-    nil
-    (cons
-      ((fst n) (fst (snd n)))
-      (map (fst n) (snd (snd n)))))))
+  (let f (fst n)
+  (let list (snd n)
+  (if list
+    (cons (f (fst list)) (map f (snd list)))
+    nil)))))
 
 (def square (fn x (* x x)))
-(print (map square 1 2 3 4 5 nil)) # (1, (4, (9, (16, (25, nil)))))
+(print (map square [1 2 3 4 5])) # (1, (4, (9, (16, (25, nil)))))
 
 (def filter (fn n
-  (if (= (snd n) nil)
-    nil
-    (if ((fst n) (fst (snd n)))
-      (cons
-        (fst (snd n))
-        (filter (fst n) (snd (snd n))))
-      (filter (fst n) (snd (snd n)))))))
+  (let f (fst n)
+  (let list (snd n)
+  (if list
+    (if (f (fst list))
+      (cons (fst list) (filter f (snd list)))
+      (filter f (snd list)))
+    nil)))))
 
 (def istwo (fn x (= x 2)))
-(print (filter istwo 1 2 3 4 5 4 3 2 1 2 nil)) # (2, (2, (2, nil)))
+(print (filter istwo [1 2 3 4 5 4 3 2 1 2])) # (2, (2, (2, nil)))
 
 (def reduce (fn x
   (let f (fst x)
-  (let accum (fst (snd x))
+  (let base (fst (snd x))
   (let list (snd (snd x))
   (if list
-    (f (fst list) (reduce f accum (snd list)))
-    accum))))))
+    (f (fst list) (reduce f base (snd list)))
+    base))))))
 
-(print (reduce + 0 1 2 3 4 5 nil))
+(print (reduce + 0 [1 2 3 4 5])) # 15
        
 nil
