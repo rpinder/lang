@@ -1,18 +1,24 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Types where
 
 import qualified Data.Map as M
 import Control.Monad.State
 import Control.Monad.Except
-  
+
 type Context = M.Map String Expr
-type EResult = ExceptT String (StateT Context IO) Expr
+
+newtype EResult a = EResult { getEResult :: ExceptT String (StateT Context IO) a}
+  deriving (Functor, Applicative, Monad, MonadIO, MonadState Context, MonadError String)
+
+runEResult :: MonadIO m => EResult a -> Context -> m (Either String a, Context)
+runEResult (EResult x) ctx = liftIO $ runStateT (runExceptT x) ctx
 
 data Expr = EInt Integer
           | ESymbol String
           | EPair Expr Expr
-          | EFn (Expr -> EResult)
+          | EFn (Expr -> EResult Expr)
           | ELambda String Expr
-          | ESpecialFn (Expr -> EResult)
+          | ESpecialFn (Expr -> EResult Expr)
           | EApp Expr Expr
           | EThen Expr Expr
           | ENil

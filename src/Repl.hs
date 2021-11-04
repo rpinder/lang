@@ -3,10 +3,9 @@ module Repl where
 
 import qualified Control.Exception as E
 import System.IO
-import Control.Monad.State
-import Control.Monad.Except
 
 import Interpreter
+import Types
 import Parser
 
 readInput :: IO String
@@ -20,7 +19,7 @@ output str = do
   case parseAll str of
     Left err -> putStr err
     Right x -> do
-      res <- evalStateT (runExceptT $ eval x) builtIns
+      res <- fst <$> runEResult (eval x) builtIns
       case res of
         Left err -> putStrLn err
         Right x' -> print x'
