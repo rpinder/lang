@@ -10,7 +10,7 @@ type Context = M.Map String Expr
 newtype EResult a = EResult { getEResult :: ExceptT String (StateT Context IO) a}
   deriving (Functor, Applicative, Monad, MonadIO, MonadState Context, MonadError String)
 
-runEResult :: MonadIO m => EResult a -> Context -> m (Either String a, Context)
+runEResult :: EResult a -> Context -> IO (Either String a, Context)
 runEResult (EResult x) ctx = liftIO $ runStateT (runExceptT x) ctx
 
 data Expr = EInt Integer
