@@ -25,7 +25,10 @@ source-repository head
 
 library
   exposed-modules:
-      Lib
+      Interpreter
+      Parser
+      Repl
+      Types
   other-modules:
       Paths_lang
   hs-source-dirs:
